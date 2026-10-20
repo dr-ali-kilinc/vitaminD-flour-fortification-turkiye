@@ -49,25 +49,31 @@ def fit_lognormal(p, n):
     o = minimize(nll, [np.log(15), -0.6], method='Nelder-Mead', options={'xatol':1e-5,'fatol':1e-5})
     return o.x[0], np.exp(o.x[1])
 
-def pooled(rows):
-    N = sum(r[0] for r in rows)
-    p = sum(r[0]*np.array(r[4],float) for r in rows)/N
+# 19-64 yaş alt bantları (19-30, 31-50, 51-64) TÜİK 2017 nüfusuyla ağırlıklandırılır
+POPW = {'Erkek 19-64': [7766249, 11777664, 5507854], 'Kadın 19-64': [7486506, 11551635, 5570475]}
+# Desen etkisi: TBSA 2017 Ek, "Laboratuvar Değişkenleri İçin Hesaplanan Desen Etkileri" (s. 437),
+# D vitamini dilimleri DEFT = 1.722, 1.804, 1.730, 1.633, 1.231 -> DEFF = DEFT^2, dilim yüzdeleriyle ağırlıklı ortalama
+DEFT = np.array([1.722, 1.804, 1.730, 1.633, 1.231]); DEFT_P = np.array([18.2, 44.7, 25.9, 10.9, 0.3])
+DEFF = float(np.sum(DEFT**2*DEFT_P)/DEFT_P.sum())   # = 3.065
+
+def pooled(g, rows):
+    N = sum(r[0] for r in rows)                       # toplam örneklem (etkin N için)
+    w = np.array(POPW.get(g, [r[0] for r in rows]), float)
+    p = sum(wi*np.array(r[4],float) for wi, r in zip(w, rows))/w.sum()
     return N, p/p.sum()
 
 fits, param_draws = [], {}
 for g, rows in SERUM.items():
-    N, p = pooled(rows)
+    N, p = pooled(g, rows)
     mu, s = fit_lognormal(p, N)
-    # Tasarım etkisi: GA'dan geri hesaplanan SS / uydurulan SS
     sd_fit = np.exp(mu+s*s/2)*np.sqrt(np.exp(s*s)-1)
-    deff = np.mean([(((r[3]-r[2])/3.92*np.sqrt(r[0]))/sd_fit)**2 for r in rows])
-    deff = max(deff, 1.0); n_eff = N/deff
+    deff = DEFF; n_eff = N/deff
     # Örnekleme belirsizliği: etkin N ile Dirichlet yeniden örnekleme -> yeniden uydurma
     d = rng.dirichlet(p*n_eff + 0.5, size=N_OUTER)
     param_draws[g] = np.array([fit_lognormal(x/x.sum(), n_eff) for x in d])
     c = norm.cdf((np.log(np.maximum(EDGES,1e-9))-mu)/s); c[0], c[-1] = 0, 1
     fp = np.diff(c)*100
-    fits.append(dict(grup=g, N=N, tasarim_etkisi=round(deff,2), mu_log=round(mu,4), sigma_log=round(s,4),
+    fits.append(dict(grup=g, N=N, tasarim_etkisi=round(deff,3), mu_log=round(mu,4), sigma_log=round(s,4),
         medyan=round(np.exp(mu),1), ortalama_fit=round(np.exp(mu+s*s/2),1), SS_fit=round(sd_fit,1),
         gozlenen_lt10=round(p[0]*100,1), fit_lt10=round(fp[0],1),
         gozlenen_lt20=round((p[0]+p[1])*100,1), fit_lt20=round(fp[0]+fp[1],1),

@@ -1,8 +1,6 @@
 """
-Proportion of individuals with serum 25(OH)D >50 ng/mL (125 nmol/L) by fortification level,
-under main-analysis assumptions (Dunlop adult curve, flour content 0.74, retention 0.85) and
-worst-case assumptions (bread + pastries, upper flour content, retention 0.90, 0.85 ng/mL per ug/day).
-Requires 01_simulation.py in the same folder (re-uses its input data and fitted distributions).
+Proportion with serum 25(OH)D >50 ng/mL by fortification level under main-analysis (fixed midpoints) and worst-case assumptions.
+Re-uses input data and fitted distributions from 01_simulation.py (must be in the same folder).
 """
 import numpy as np, pandas as pd, importlib.util, sys, io, contextlib
 src=open('01_simulation.py').read()

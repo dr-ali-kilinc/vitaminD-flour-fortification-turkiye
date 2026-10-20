@@ -11,6 +11,7 @@ CPI = 1.5553               # BLS CPI Inflation Calculator, Ocak 2006 -> Ocak 202
 PRICE, CONTENT, OVERAGE = 33*CPI, 0.0025, 1.20
 POP_TOTAL, FLOUR_G = 80_810_525, 337
 births = 1_300_258; preg = births*0.75
+DU = {'Erkek 15-18':0.05,'Kadın 15-18':0.05,'Erkek 19-64':0.13,'Kadın 19-64':0.13,'Gebe':0.13,'Erkek 65+':0.23,'Kadın 65+':0.23}  # Aguiar 2020, asemptomatik VDD
 POP = {'Erkek 15-18':2_680_834,'Erkek 19-64':25_051_767,'Erkek 65+':3_033_433,
        'Kadın 15-18':2_540_435,'Kadın 19-64':24_608_616-preg,'Kadın 65+':3_861_952,'Gebe':preg}
 
@@ -31,12 +32,17 @@ for sc in ['S1','S9','S6','S7']:
             # delta negatif: alt95 (en negatif) -> en çok önlenen vaka; etiketler buna göre çevrildi
             for q_out,q_in in [('med','med'),('alt95','ust95'),('ust95','alt95')]:
                 r[f'onlenen_{th}_{q_out}'] = -sum(sub[sub.grup==g][f'delta_{th}_{q_in}'].iloc[0]/100*POP[g] for g in POP)
+        # QALY: ana analiz (<20 ng/mL vakalarına kayıp) ve ara senaryo (yalnızca <12 ng/mL vakalarına kayıp)
+        for th,lab in [('lt20','qaly'),('lt12','qaly_lt12')]:
+            for q_out,q_in in [('med','med'),('alt95','ust95'),('ust95','alt95')]:
+                r[f'{lab}_{q_out}'] = -sum(sub[sub.grup==g][f'delta_{th}_{q_in}'].iloc[0]/100*POP[g]*DU[g] for g in POP)
         ic = ingredient_cost(dose)
         r['hammadde_USD_yil']=ic; r['hammadde_USD_kisi_yil']=ic/POP_TOTAL
         for F in [0, 0.05, 0.10, 0.25, 0.50]:
             tot = ic + F*POP_TOTAL
             r[f'USD_per_vaka_lt20_F{F}'] = tot/r['onlenen_lt20_med']
             r[f'USD_per_vaka_lt12_F{F}'] = tot/r['onlenen_lt12_med']
+            r[f'USD_per_QALY_F{F}'] = tot/r['qaly_med']; r[f'USD_per_QALY_lt12_F{F}'] = tot/r['qaly_lt12_med']
         rows.append(r)
 out=pd.DataFrame(rows); out.to_csv('results/5_ekonomik_sonuclar.csv',index=False,encoding='utf-8-sig')
 pd.set_option('display.width',250); pd.set_option('display.float_format',lambda x:f'{x:,.2f}')
