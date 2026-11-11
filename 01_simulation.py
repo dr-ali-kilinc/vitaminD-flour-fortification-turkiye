@@ -52,9 +52,11 @@ def fit_lognormal(p, n):
 # 19-64 yaş alt bantları (19-30, 31-50, 51-64) TÜİK 2017 nüfusuyla ağırlıklandırılır
 POPW = {'Erkek 19-64': [7766249, 11777664, 5507854], 'Kadın 19-64': [7486506, 11551635, 5570475]}
 # Desen etkisi: TBSA 2017 Ek, "Laboratuvar Değişkenleri İçin Hesaplanan Desen Etkileri" (s. 437),
-# D vitamini dilimleri DEFT = 1.722, 1.804, 1.730, 1.633, 1.231 -> DEFF = DEFT^2, dilim yüzdeleriyle ağırlıklı ortalama
-DEFT = np.array([1.722, 1.804, 1.730, 1.633, 1.231]); DEFT_P = np.array([18.2, 44.7, 25.9, 10.9, 0.3])
-DEFF = float(np.sum(DEFT**2*DEFT_P)/DEFT_P.sum())   # = 3.065
+# D vitamini dilimleri için tabloda "Desen Etkisi (DEFT)" başlığıyla 1.722, 1.804, 1.730, 1.633, 1.231 verilmiştir.
+# Aynı tablodaki %95 GA'lardan geri hesaplanan (SE_desen / SE_basit)^2 oranları bu değerlerle örtüştüğünden
+# verilen değerler varyans oranı, yani DEFF'tir. Dilim yüzdeleriyle ağırlıklı ortalama alınır.
+DEFF_TAB = np.array([1.722, 1.804, 1.730, 1.633, 1.231]); DEFF_P = np.array([18.2, 44.7, 25.9, 10.9, 0.3])
+DEFF = float(np.sum(DEFF_TAB*DEFF_P)/DEFF_P.sum())   # = 1.75
 
 def pooled(g, rows):
     N = sum(r[0] for r in rows)                       # toplam örneklem (etkin N için)
@@ -123,17 +125,22 @@ SCEN = {
 
 out = []
 groups = [g for g in SERUM]
-for gi, g in enumerate(groups):
-    b_m,b_sd,c_m,c_sd,*_ = INTAKE[g]
-    rs = np.random.default_rng(SEED + 100*(gi+1))
-    res = {(sc,d): {'lt20':[], 'lt12':[], 'mean':[]} for sc in SCEN for d in DOSES}
-    for k in range(N_OUTER):
+POPN = {'Erkek 15-18':2680834,'Erkek 19-64':25051767,'Erkek 65+':3033433,'Kadın 15-18':2540435,
+        'Kadın 19-64':24608616-975194,'Kadın 65+':3861952,'Gebe':975194}   # TÜİK 2017; gebe = 1.300.258 x 0.75
+DU = {'Erkek 15-18':0.05,'Kadın 15-18':0.05,'Erkek 19-64':0.13,'Kadın 19-64':0.13,'Gebe':0.13,'Erkek 65+':0.23,'Kadın 65+':0.23}
+# Ortak (tüm gruplar için aynı) parametreler: her dış tekrarda bir kez çekilir
+rs_shared = np.random.default_rng(SEED + 7)
+SH = [dict(ff_b=rs_shared.uniform(.69,.79), ff_c=rs_shared.uniform(.45,.65), u_ret=rs_shared.random(), zs=rs_shared.standard_normal()) for _ in range(N_OUTER)]
+rs_g = {g: np.random.default_rng(SEED + 100*(gi+1)) for gi, g in enumerate(groups)}
+res = {(g,sc,d): {'lt20':np.zeros(N_OUTER), 'lt12':np.zeros(N_OUTER), 'mean':np.zeros(N_OUTER)} for g in groups for sc in SCEN for d in DOSES}
+for k in range(N_OUTER):
+    ff_b, ff_c, u_ret, zs = SH[k]['ff_b'], SH[k]['ff_c'], SH[k]['u_ret'], SH[k]['zs']
+    for g in groups:
+        b_m,b_sd,c_m,c_sd,*_ = INTAKE[g]; rs = rs_g[g]
         mu, s = param_draws[g][k]
         zb, z1, z2, u = rs.standard_normal(N_INNER), rs.standard_normal(N_INNER), rs.standard_normal(N_INNER), rs.random(N_INNER)
         base = np.exp(mu + s*zb)
         bread, corek = ln_draw(b_m,b_sd,z1), ln_draw(c_m,c_sd,z2)
-        ff_b, ff_c, u_ret = rs.uniform(.69,.79), rs.uniform(.45,.65), rs.random()
-        zs = rs.standard_normal()
         for sc, P in SCEN.items():
             lo_r, hi_r = P.get('ret', (0.80, 0.90))
             ret = lo_r + (hi_r-lo_r)*u_ret
@@ -145,15 +152,31 @@ for gi, g in enumerate(groups):
                     serum = base + rcs_increment(P['dr'][1], intake, zs)
                 else:
                     serum = base + max(P['dr'][1] + P['dr'][2]*zs, 0)*intake
-                r = res[(sc,d)]
-                r['lt20'].append(np.mean(serum<20)*100); r['lt12'].append(np.mean(serum<12)*100); r['mean'].append(serum.mean())
-    for (sc,d), r in res.items():
-        b20 = np.array(res[(sc,0)]['lt20']); b12 = np.array(res[(sc,0)]['lt12'])
-        a20, a12, m = map(np.array, (r['lt20'], r['lt12'], r['mean']))
-        q = lambda x: np.percentile(x,[50,2.5,97.5])
-        out.append(dict(grup=g, senaryo=sc, doz_mcg_100g=d,
-            **{f'{k}_{t}':round(v,2) for k,x in [('serum_ort',m),('prev_lt20',a20),('prev_lt12',a12),
-                ('delta_lt20',a20-b20),('delta_lt12',a12-b12)] for t,v in zip(['med','alt95','ust95'],q(x))}))
+                r = res[(g,sc,d)]
+                r['lt20'][k] = np.mean(serum<20)*100; r['lt12'][k] = np.mean(serum<12)*100; r['mean'][k] = serum.mean()
+q = lambda x: np.percentile(x,[50,2.5,97.5])
+for g in groups:
+    for sc in SCEN:
+        for d in DOSES:
+            r = res[(g,sc,d)]; b20 = res[(g,sc,0)]['lt20']; b12 = res[(g,sc,0)]['lt12']
+            out.append(dict(grup=g, senaryo=sc, doz_mcg_100g=d,
+                **{f'{kk}_{t}':round(v,2) for kk,x in [('serum_ort',r['mean']),('prev_lt20',r['lt20']),('prev_lt12',r['lt12']),
+                    ('delta_lt20',r['lt20']-b20),('delta_lt12',r['lt12']-b12)] for t,v in zip(['med','alt95','ust95'],q(x))}))
+# Ulusal sonuçlar: her dış tekrarda gruplar toplanır, sonra yüzdelikler alınır
+P15 = sum(POPN.values()); nat = []
+for sc in SCEN:
+    for d in DOSES:
+        p20 = sum(res[(g,sc,d)]['lt20']*POPN[g] for g in groups)/P15
+        p12 = sum(res[(g,sc,d)]['lt12']*POPN[g] for g in groups)/P15
+        c20 = sum((res[(g,sc,0)]['lt20']-res[(g,sc,d)]['lt20'])/100*POPN[g] for g in groups)
+        c12 = sum((res[(g,sc,0)]['lt12']-res[(g,sc,d)]['lt12'])/100*POPN[g] for g in groups)
+        qa20 = sum((res[(g,sc,0)]['lt20']-res[(g,sc,d)]['lt20'])/100*POPN[g]*DU[g] for g in groups)
+        qa12 = sum((res[(g,sc,0)]['lt12']-res[(g,sc,d)]['lt12'])/100*POPN[g]*DU[g] for g in groups)
+        row = dict(senaryo=sc, doz_mcg_100g=d)
+        for nm,x in [('prev_lt20',p20),('prev_lt12',p12),('onlenen_lt20',c20),('onlenen_lt12',c12),('qaly',qa20),('qaly_lt12',qa12)]:
+            for t,v in zip(['med','alt95','ust95'],q(x)): row[f'{nm}_{t}'] = v
+        nat.append(row)
+pd.DataFrame(nat).to_csv('results/6_ulusal_sonuclar.csv', index=False, encoding='utf-8-sig')
 pd.DataFrame(out).to_csv('results/2_prevalans_sonuclari.csv', index=False, encoding='utf-8-sig')
 
 # ---------------- 4. Güvenlik (en kötü durum) ----------------

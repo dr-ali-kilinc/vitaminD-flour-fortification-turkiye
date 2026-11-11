@@ -15,6 +15,7 @@ Code and results for the manuscript *"Vitamin D fortification of wheat flour in 
 | `results/3_guvenlik_sonuclari.csv` | Worst-case safety results |
 | `results/4_serum_50_uzeri_doz.csv` | % above 50 ng/mL by fortification level |
 | `results/5_ekonomik_sonuclar.csv` | Economic results, including QALYs |
+| `results/6_ulusal_sonuclar.csv` | National (≥15 years) prevalence, cases averted and QALYs per scenario and level, computed within each iteration (median, 95% UI) |
 | `verification/Dogrulama_Calisma_Kitabi.xlsx` | Independent spreadsheet re-implementation of the main calculations (in Turkish) |
 
 Column names and comments are partly in Turkish (*grup* = group, *senaryo* = scenario, *doz* = fortification level, *onlenen* = averted, *Erkek/Kadın* = men/women, *Gebe* = pregnant, *Emziren* = lactating).
@@ -43,7 +44,9 @@ Random seeds are fixed, so results are reproducible.
 
 ## Version history
 
-- **v1.1.0**: Sampling uncertainty now uses the design effect reported in TBSA 2017 for serum vitamin D categories (DEFF 3.07) instead of an estimate derived from confidence intervals; 19–64-year sub-bands pooled with 2017 population weights instead of sample sizes; QALY outputs (including a scenario restricted to cases <12 ng/mL) added to the economic results; figure script and verification workbook added.
+- **v1.2.0**: Corrected the design effect: the TBSA 2017 table values labelled DEFT correspond to variance ratios (DEFF), so the prevalence-weighted mean 1.75 is now used (v1.1.0 squared them to 3.07). Parameters common to all groups (flour content, retention, dose–response deviate) are now drawn once per outer iteration and shared across groups, and national totals and their 95% UIs are computed within each iteration (new file `results/6_ulusal_sonuclar.csv`), which the economic analysis now uses. Medians changed only slightly; uncertainty intervals are narrower.
+
+- **v1.1.0**: Sampling uncertainty now uses the design effect reported in TBSA 2017 for serum vitamin D categories (then implemented as DEFF 3.07; corrected in v1.2.0) instead of an estimate derived from confidence intervals; 19–64-year sub-bands pooled with 2017 population weights instead of sample sizes; QALY outputs (including a scenario restricted to cases <12 ng/mL) added to the economic results; figure script and verification workbook added.
 - **v1.0.0**: Initial version.
 
 ## License

@@ -20,22 +20,17 @@ def ingredient_cost(dose):   # USD/yıl, tüm ülke
     d3_kg = dose*10*flour_t/1e6               # dose mcg/100g = 10*dose mg/ton
     return d3_kg/CONTENT*OVERAGE*PRICE
 
-d = pd.read_csv('results/2_prevalans_sonuclari.csv')
+# Önlenen vakalar ve QALY: her dış tekrarda ulusal toplam alınarak hesaplanan dağılımdan (6_ulusal_sonuclar.csv)
+d = pd.read_csv('results/6_ulusal_sonuclar.csv')
 rows=[]
 for sc in ['S1','S9','S6','S7']:
     for dose in sorted(d.doz_mcg_100g.unique()):
         if dose==0: continue
         sub = d[(d.senaryo.str.startswith(sc))&(d.doz_mcg_100g==dose)]
         if sub.empty: continue
-        r={'senaryo':sub.senaryo.iloc[0],'doz':dose}
-        for th in ['lt20','lt12']:
-            # delta negatif: alt95 (en negatif) -> en çok önlenen vaka; etiketler buna göre çevrildi
-            for q_out,q_in in [('med','med'),('alt95','ust95'),('ust95','alt95')]:
-                r[f'onlenen_{th}_{q_out}'] = -sum(sub[sub.grup==g][f'delta_{th}_{q_in}'].iloc[0]/100*POP[g] for g in POP)
-        # QALY: ana analiz (<20 ng/mL vakalarına kayıp) ve ara senaryo (yalnızca <12 ng/mL vakalarına kayıp)
-        for th,lab in [('lt20','qaly'),('lt12','qaly_lt12')]:
-            for q_out,q_in in [('med','med'),('alt95','ust95'),('ust95','alt95')]:
-                r[f'{lab}_{q_out}'] = -sum(sub[sub.grup==g][f'delta_{th}_{q_in}'].iloc[0]/100*POP[g]*DU[g] for g in POP)
+        n = sub.iloc[0]; r={'senaryo':n.senaryo,'doz':dose}
+        for c in ['onlenen_lt20','onlenen_lt12','qaly','qaly_lt12']:
+            for t in ['med','alt95','ust95']: r[f'{c}_{t}'] = n[f'{c}_{t}']
         ic = ingredient_cost(dose)
         r['hammadde_USD_yil']=ic; r['hammadde_USD_kisi_yil']=ic/POP_TOTAL
         for F in [0, 0.05, 0.10, 0.25, 0.50]:
